@@ -10,6 +10,9 @@ WIFI_SSID = "UPC-AP-5653080"
 LOG_FILE = "wifi_log.txt"
 PASSWORD_FILE = "wifi_password.enc"
 KEY_FILE = "secret.key"
+RETRY_INTERVAL = 10  # Retry every 10 seconds
+MAX_RETRIES = 6      # Retry for up to 1 minute (6 retries)
+BATCH_FILE = "connect_wifi.bat"  # The batch file to modify
 
 def load_or_generate_key():
     # Generate and save the key if it doesn't exist
@@ -46,16 +49,21 @@ def is_connected_to_wifi():
 
 def connect_to_wifi(password):
     try:
-        # Setup the profile with password and connect using netsh
-        profile_cmd = f'netsh wlan add profile filename="wifi_profile.xml"'
-        subprocess.run(profile_cmd, shell=True, check=True)
-
         # Connect using the password
-        result = subprocess.check_output(f'netsh wlan connect name={WIFI_SSID} keyMaterial={password}', shell=True, encoding='utf-8')
+        subprocess.check_output(f'netsh wlan connect name={WIFI_SSID} keyMaterial={password}', shell=True, encoding='utf-8')
         return True
     except subprocess.CalledProcessError as e:
         log_error(f"Failed to connect to {WIFI_SSID}: {e}")
         return False
+
+def retry_connection(password):
+    retries = 0
+    while retries < MAX_RETRIES:
+        if connect_to_wifi(password):
+            return True
+        retries += 1
+        time.sleep(RETRY_INTERVAL)  # Wait before retrying
+    return False
 
 def log_error(message):
     with open(LOG_FILE, 'a') as log:
@@ -89,19 +97,32 @@ def prompt_for_password():
     password = getpass.getpass(prompt="Password (input hidden): ")
     return password
 
+def update_batch_file_to_pythonw():
+    # Read the batch file content and replace "python" with "pythonw"
+    with open(BATCH_FILE, 'r') as file:
+        content = file.read()
+
+    if "pythonw" not in content:  # Only replace if it's not already using pythonw
+        new_content = content.replace("python", "pythonw")
+        with open(BATCH_FILE, 'w') as file:
+            file.write(new_content)
+        log_error("Batch file updated to use pythonw for silent execution.")
+
 def main():
     key = load_or_generate_key()
-    
+
     # Check if already connected
     if not is_connected_to_wifi():
         password = decrypt_password(key)
         
-        # If password is not available or incorrect, ask for password
+        # If password is not available, prompt user to enter it
         if not password:
             password = prompt_for_password()
             encrypt_password(password, key)
-        
-        did_connect = connect_to_wifi(password)
+            update_batch_file_to_pythonw()  # Modify batch file to use pythonw for future runs
+
+        # Retry to connect for up to 1 minute
+        did_connect = retry_connection(password)
     else:
         did_connect = False  # Already connected
 
