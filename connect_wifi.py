@@ -1,8 +1,7 @@
 import os
 import subprocess
 import time
-from cryptography.fernet import Fernet
-import getpass
+from cryptography.fernet import Fernet  # Import for decryption
 from datetime import datetime
 
 # Constants
@@ -10,27 +9,17 @@ WIFI_SSID = "UPC-AP-5653080"
 LOG_FILE = "wifi_log.txt"
 PASSWORD_FILE = "wifi_password.enc"
 KEY_FILE = "secret.key"
-RETRY_INTERVAL = 10  # Retry every 10 seconds
-MAX_RETRIES = 6      # Retry for up to 1 minute (6 retries)
-BATCH_FILE = "connect_wifi.bat"  # The batch file to modify
+BATCH_FILE = "connect_wifi.bat"
 
-def load_or_generate_key():
-    # Generate and save the key if it doesn't exist
-    if not os.path.exists(KEY_FILE):
-        key = Fernet.generate_key()
-        with open(KEY_FILE, 'wb') as key_file:
-            key_file.write(key)
-    else:
+# Loads key for decryption
+def load_key():
+    if os.path.exists(KEY_FILE):
         with open(KEY_FILE, 'rb') as key_file:
             key = key_file.read()
-    return key
+        return key
+    return None
 
-def encrypt_password(password, key):
-    f = Fernet(key)
-    encrypted_password = f.encrypt(password.encode())
-    with open(PASSWORD_FILE, 'wb') as pwd_file:
-        pwd_file.write(encrypted_password)
-
+# Decrypt password using key
 def decrypt_password(key):
     f = Fernet(key)
     if os.path.exists(PASSWORD_FILE):
@@ -39,6 +28,7 @@ def decrypt_password(key):
         return f.decrypt(encrypted_password).decode()
     return None
 
+# Check if already connected to any wifi
 def is_connected_to_wifi():
     try:
         result = subprocess.check_output("netsh wlan show interfaces", shell=True, encoding='utf-8')
@@ -47,29 +37,22 @@ def is_connected_to_wifi():
         log_error(f"Error checking Wi-Fi status: {e}")
         return False
 
+# Connect using the decrypted password 
 def connect_to_wifi(password):
     try:
-        # Connect using the password
         subprocess.check_output(f'netsh wlan connect name={WIFI_SSID} keyMaterial={password}', shell=True, encoding='utf-8')
         return True
     except subprocess.CalledProcessError as e:
         log_error(f"Failed to connect to {WIFI_SSID}: {e}")
         return False
 
-def retry_connection(password):
-    retries = 0
-    while retries < MAX_RETRIES:
-        if connect_to_wifi(password):
-            return True
-        retries += 1
-        time.sleep(RETRY_INTERVAL)  # Wait before retrying
-    return False
-
+# Write errors to logfile
 def log_error(message):
     with open(LOG_FILE, 'a') as log:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         log.write(f"{timestamp} - {message}\n")
 
+# Update counter in logfile to see how often the script was actually needed
 def update_log(did_connect):
     connected_count = 0
     already_connected_count = 0
@@ -92,44 +75,39 @@ def update_log(did_connect):
         log.write(f"Connected to {WIFI_SSID} count: {connected_count}\n")
         log.write(f"Already connected count: {already_connected_count}\n")
 
-def prompt_for_password():
-    print("Enter Wi-Fi password for", WIFI_SSID)
-    password = getpass.getpass(prompt="Password (input hidden): ")
-    return password
+# Run the change_password.py script to set the Wi-Fi password
+def run_change_password_script():
+    print("No saved Wi-Fi password found. Running password setup script...")
+    subprocess.run(['python', 'change_password.py'], shell=True)
+    print("Password setup complete. Please rerun the connect script.")
 
-def update_batch_file_to_pythonw():
-    # Read the batch file content and replace "python" with "pythonw"
-    with open(BATCH_FILE, 'r') as file:
-        content = file.read()
-
-    if "pythonw" not in content:  # Only replace if it's not already using pythonw
-        new_content = content.replace("python", "pythonw")
-        with open(BATCH_FILE, 'w') as file:
-            file.write(new_content)
-        log_error("Batch file updated to use pythonw for silent execution.")
-
+# Check if the password file exists
 def main():
-    key = load_or_generate_key()
+    if not os.path.exists(PASSWORD_FILE):
+        run_change_password_script()
+        return
+
+    # Load the encryption key
+    key = load_key()
+    if not key:
+        log_error("Encryption key not found. Please run the password setup.")
+        return
+
+    # Decrypt the password
+    password = decrypt_password(key)
+    if not password:
+        log_error("Decryption failed. No valid password found.")
+        return
 
     # Check if already connected
     if not is_connected_to_wifi():
-        password = decrypt_password(key)
-        
-        # If password is not available, prompt user to enter it
-        if not password:
-            password = prompt_for_password()
-            encrypt_password(password, key)
-            update_batch_file_to_pythonw()  # Modify batch file to use pythonw for future runs
-
-        # Retry to connect for up to 1 minute
-        did_connect = retry_connection(password)
+        # Attempt to connect using the decrypted password
+        did_connect = connect_to_wifi(password)
     else:
         did_connect = False  # Already connected
 
     # Update the log
     update_log(did_connect)
-
-    time.sleep(2)
 
 if __name__ == "__main__":
     main()
