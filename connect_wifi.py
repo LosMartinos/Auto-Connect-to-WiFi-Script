@@ -1,32 +1,11 @@
 import os
 import subprocess
 import time
-from cryptography.fernet import Fernet  # Import for decryption
 from datetime import datetime
 
 # Constants
-WIFI_SSID = "UPC-AP-5653080"
+WIFI_SSID = "YOURSSIDHERE" # change this to your network SSID
 LOG_FILE = "wifi_log.txt"
-PASSWORD_FILE = "wifi_password.enc"
-KEY_FILE = "secret.key"
-BATCH_FILE = "connect_wifi.bat"
-
-# Loads key for decryption
-def load_key():
-    if os.path.exists(KEY_FILE):
-        with open(KEY_FILE, 'rb') as key_file:
-            key = key_file.read()
-        return key
-    return None
-
-# Decrypt password using key
-def decrypt_password(key):
-    f = Fernet(key)
-    if os.path.exists(PASSWORD_FILE):
-        with open(PASSWORD_FILE, 'rb') as pwd_file:
-            encrypted_password = pwd_file.read()
-        return f.decrypt(encrypted_password).decode()
-    return None
 
 # Check if already connected to any wifi
 def is_connected_to_wifi():
@@ -37,10 +16,10 @@ def is_connected_to_wifi():
         log_error(f"Error checking Wi-Fi status: {e}")
         return False
 
-# Connect using the decrypted password 
-def connect_to_wifi(password):
+# Connect to Wi-Fi using the saved profile from windows
+def connect_to_wifi():
     try:
-        subprocess.check_output(f'netsh wlan connect name={WIFI_SSID} keyMaterial={password}', shell=True, encoding='utf-8')
+        subprocess.check_output(f'netsh wlan connect name={WIFI_SSID}', shell=True, encoding='utf-8')
         return True
     except subprocess.CalledProcessError as e:
         log_error(f"Failed to connect to {WIFI_SSID}: {e}")
@@ -75,39 +54,19 @@ def update_log(did_connect):
         log.write(f"Connected to {WIFI_SSID} count: {connected_count}\n")
         log.write(f"Already connected count: {already_connected_count}\n")
 
-# Run the change_password.py script to set the Wi-Fi password
-def run_change_password_script():
-    print("No saved Wi-Fi password found. Running password setup script...")
-    subprocess.run(['python', 'change_password.py'], shell=True)
-    print("Password setup complete. Please rerun the connect script.")
-
-# Check if the password file exists
+# Main
 def main():
-    if not os.path.exists(PASSWORD_FILE):
-        run_change_password_script()
-        return
-
-    # Load the encryption key
-    key = load_key()
-    if not key:
-        log_error("Encryption key not found. Please run the password setup.")
-        return
-
-    # Decrypt the password
-    password = decrypt_password(key)
-    if not password:
-        log_error("Decryption failed. No valid password found.")
-        return
-
     # Check if already connected
     if not is_connected_to_wifi():
-        # Attempt to connect using the decrypted password
-        did_connect = connect_to_wifi(password)
+        # Attempt to connect using the saved profile from windows
+        did_connect = connect_to_wifi()
     else:
         did_connect = False  # Already connected
 
-    # Update the log
+    # Update logfile
     update_log(did_connect)
+    # for debug purposes to not instantly close the popup cmd
+    #input("Press Enter to exit...")
 
 if __name__ == "__main__":
     main()
