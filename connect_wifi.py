@@ -1,11 +1,13 @@
 import os
 import subprocess
 import time
+import sys
 from datetime import datetime
 
 # Constants
 WIFI_SSID = "YOURSSIDHERE" # change this to your network SSID
 LOG_FILE = "wifi_log.txt"
+LOG_FILE = r"absolute\path\to\your\wifi_log.txt"
 
 # Check if already connected to any wifi
 def is_connected_to_wifi():
@@ -56,17 +58,25 @@ def update_log(did_connect):
 
 # Main
 def main():
-    # Check if already connected
-    if not is_connected_to_wifi():
-        # Attempt to connect using the saved profile from windows
-        did_connect = connect_to_wifi()
-    else:
-        did_connect = False  # Already connected
+    try:
+        # Check if already connected
+        if not is_connected_to_wifi():
+            # Attempt to connect using the saved profile from windows
+            did_connect = connect_to_wifi()
+        else:
+            did_connect = False  # Already connected
 
-    # Update logfile
-    update_log(did_connect)
-    # for debug purposes to not instantly close the popup cmd
-    #input("Press Enter to exit...")
+        # Update logfile
+        update_log(did_connect)
+
+        # Sleep for 1 seconds to ensure everything is logged before closing
+        time.sleep(1)
+
+        # Exit the script
+        sys.exit()
+    except Exception as e:
+        log_error(f"Unhandled exception: {e}")
+        sys.exit(1)  # Exit with error code 1 if there's an unhandled exception
 
 if __name__ == "__main__":
     main()
