@@ -6,7 +6,6 @@ from datetime import datetime
 
 # Constants
 WIFI_SSID = "YOURSSIDHERE" # change this to your network SSID
-LOG_FILE = "wifi_log.txt"
 LOG_FILE = r"absolute\path\to\your\wifi_log.txt"
 
 # Check if already connected to any wifi
